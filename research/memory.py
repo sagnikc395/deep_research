@@ -7,9 +7,15 @@ _DB_PATH = Path(__file__).resolve().parent.parent / "memory.db"
 
 
 def _get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(_DB_PATH))
+    conn = sqlite3.connect(str(_DB_PATH), timeout=30)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError:
+        # Another process may be opening the database at the same time. The
+        # busy timeout still lets ordinary reads/writes wait instead of failing.
+        pass
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS research_sessions (

@@ -19,6 +19,7 @@ Researching a topic usually means opening thirty tabs, skimming half of them, lo
 | Inference provider   | Hugging Face Inference API (Novita, Together)    |
 | Agent framework      | [Agno](https://github.com/agno-agi/agno)         |
 | Web search & scrape  | [Firecrawl](https://www.firecrawl.dev/) over MCP |
+| MCP server           | [Python MCP SDK](https://github.com/modelcontextprotocol/python-sdk) |
 | UI                   | [Textual](https://textual.textualize.io/) TUI    |
 | Package manager      | [uv](https://docs.astral.sh/uv/)                 |
 
@@ -111,6 +112,67 @@ uv run python main.py
 ```
 
 This launches a TUI — type your research query, hit Enter, and watch the planner, splitter, researchers, and synthesizer work in real time. The final report is written to `results.md`.
+
+### MCP server
+
+`deep-research` also ships a local MCP server for Claude Desktop, Claude.ai-compatible clients, and local automation. The default transport is `stdio`, which is the best fit for local development and desktop integrations.
+
+Run it directly:
+
+```bash
+uv run python -m research.mcp_server
+```
+
+Or use the installed script:
+
+```bash
+uv run deep-research-mcp
+```
+
+Claude Desktop config example:
+
+```json
+{
+  "mcpServers": {
+    "deep-research": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/absolute/path/to/deep-research",
+        "run",
+        "deep-research-mcp"
+      ],
+      "env": {
+        "HF_TOKEN": "your-huggingface-token",
+        "FIRECRAWL_API_KEY": "your-firecrawl-api-key"
+      }
+    }
+  }
+}
+```
+
+For local HTTP-style development, use either SSE or streamable HTTP:
+
+```bash
+uv run deep-research-mcp --transport sse --host 127.0.0.1 --port 8000
+uv run deep-research-mcp --transport streamable-http --host 127.0.0.1 --port 8000
+```
+
+The server exposes:
+
+- `run_literature_review(topic, scope, depth)` — full plan → split → web research → synthesis pipeline
+- `plan_research(topic)` and `split_research_plan(research_plan)` — planning-only workflow pieces
+- `search_past_research(query)` and `get_research_session(session_id)` — access local memory
+- `synthesize_findings(topic, source_notes)` — combine supplied notes into a research brief
+- `evaluate_source(url, context)` — credibility assessment with optional Firecrawl retrieval
+- `extract_data_from_paper(source, fields, source_is_url)` — structured extraction from a URL or supplied text
+- `generate_literature_map(topic)`, `analyze_research_gap(field)`, `generate_research_proposal(idea)`, and `create_research_timeline(project_scope)` — higher-level research workflows
+
+It also exposes MCP resources:
+
+- `research://sessions` — recent saved sessions
+- `research://session/{session_id}` — one full saved session
+- `research://server` — server capability profile
 
 ## Configuration
 

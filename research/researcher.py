@@ -18,7 +18,7 @@ from agno.agent import Agent
 from agno.agent._run import RunOutput
 from agno.tools.mcp import MCPTools
 
-from .config import MCP_URL, subagent_model_id, subagent_provider
+from .config import firecrawl_mcp_url, subagent_model_id, subagent_provider
 from .models import hf_model
 from .prompts import SUBAGENT_PROMPT_TEMPLATE
 from .telemetry import RESEARCHER_TOOL_CALL_LIMIT, PipelineMetrics, check_tool_loop
@@ -30,7 +30,7 @@ async def _run_async(prompt: str) -> RunOutput:
     Returns the full RunOutput so callers can inspect metrics and tool
     executions for token-waste and loop detection.
     """
-    async with MCPTools(url=MCP_URL, transport="streamable-http") as mcp:
+    async with MCPTools(url=firecrawl_mcp_url(), transport="streamable-http") as mcp:
         agent = Agent(
             model=hf_model(subagent_model_id, subagent_provider),
             tools=[mcp],
