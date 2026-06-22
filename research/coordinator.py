@@ -1,48 +1,47 @@
-"""Pipeline orchestrator: plan → split → research → synthesize.
-
-run_deep_research() is the single public entry point. It wires together
-the four pipeline stages and persists the session to memory.
-"""
 import concurrent.futures
 
-from agno.agent import Agent
-
-from .config import coordinator_model_id, coordinator_provider
+from .config import planner_model_id, planner_provider, rlm_max_iterations, rlm_max_depth
 from .memory import save_session
 from .models import hf_model
-from .planner import generate_research_plan
+from .planner import plan_subtasks
 from .prompts import SYNTHESIS_PROMPT_TEMPLATE
 from .researcher import research_subtask
-from .task_splitter import split_task_into_subtasks
-from .telemetry import PipelineMetrics
+from .rlm import RLM
+
+DIRECT_SYNTHESIS_LIMIT = 50_000
+
+
+def _synthesize_direct(query: str, sub_reports: str) -> str:
+    model = hf_model(planner_model_id, planner_provider)
+    prompt = SYNTHESIS_PROMPT_TEMPLATE.format(user_query=query, sub_reports=sub_reports)
+    return model([{"role": "user", "content": prompt}]).content
+
+
+def _synthesize_rlm(query: str, sub_reports: str, log) -> str:
+    log("Reports exceed direct synthesis limit — using RLM for hierarchical synthesis.")
+    rlm = RLM(
+        model=hf_model(planner_model_id, planner_provider),
+        max_iterations=rlm_max_iterations,
+        max_depth=rlm_max_depth,
+        log=log,
+    )
+    task = (
+        "Synthesize these research sub-reports into a single cohesive markdown document. "
+        "Write a title and executive summary, integrate findings into a logical narrative, "
+        "highlight key insights and contradictions, and end with a deduplicated Sources section. "
+        f"The original user query was: {query}"
+    )
+    return rlm.run(context=sub_reports, task=task)
 
 
 def run_deep_research(query: str, log=print) -> str:
-    metrics = PipelineMetrics()
+    subtasks = plan_subtasks(query, log=log)
 
-    # ── Stage 1: plan ────────────────────────────────────────────────────
-    log("Generating research plan...")
-    plan = generate_research_plan(query, metrics=metrics, log=log)
-    log("Research plan generated.")
-
-    # ── Stage 2: split ───────────────────────────────────────────────────
-    log("Splitting into subtasks...")
-    subtasks = split_task_into_subtasks(plan, metrics=metrics, log=log)
-    log(f"Generated {len(subtasks)} subtasks.")
-    for t in subtasks:
-        log(f"  [{t['id']}] {t['title']}")
-
-    # ── Stage 3: research subtasks in parallel ───────────────────────────
-    # Each research_subtask already runs its async MCP work in its own
-    # OS thread, so spinning up one outer thread per subtask is safe and
-    # gives us true fan-out with no event-loop contention.
     reports: dict[str, str] = {}
     log(f"Starting {len(subtasks)} researchers in parallel...")
 
     def _research_one(subtask: dict) -> tuple[str, str]:
-        return subtask["id"], research_subtask(
-            query, plan, subtask, log=log, metrics=metrics
-        )
+        return subtask["id"], research_subtask(query, subtask, log=log)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(subtasks)) as pool:
         futures = {pool.submit(_research_one, t): t for t in subtasks}
@@ -50,25 +49,16 @@ def run_deep_research(query: str, log=print) -> str:
             subtask_id, report = future.result()
             reports[subtask_id] = report
 
-    # ── Stage 4: synthesize ──────────────────────────────────────────────
     log("Synthesizing final report...")
     sub_reports = "\n\n---\n\n".join(
         f"## {t['title']}\n\n{reports[t['id']]}" for t in subtasks
     )
-    synthesis_prompt = SYNTHESIS_PROMPT_TEMPLATE.format(
-        user_query=query,
-        research_plan=plan,
-        sub_reports=sub_reports,
-    )
-    synthesizer = Agent(
-        model=hf_model(coordinator_model_id, coordinator_provider),
-        name="synthesizer",
-        markdown=True,
-    )
-    synthesis_response = synthesizer.run(synthesis_prompt)
-    metrics.record("synthesizer", synthesis_response.metrics, log)
 
-    save_session(query, plan, subtasks, synthesis_response.content)
+    if len(sub_reports) <= DIRECT_SYNTHESIS_LIMIT:
+        final = _synthesize_direct(query, sub_reports)
+    else:
+        final = _synthesize_rlm(query, sub_reports, log)
+
+    save_session(query, subtasks, final)
     log("Research complete.")
-    metrics.report(log)
-    return synthesis_response.content
+    return final

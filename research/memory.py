@@ -15,7 +15,6 @@ def _get_connection() -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS research_sessions (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             query       TEXT    NOT NULL,
-            plan        TEXT    NOT NULL,
             subtasks    TEXT    NOT NULL,
             report      TEXT    NOT NULL,
             created_at  TEXT    NOT NULL
@@ -26,23 +25,11 @@ def _get_connection() -> sqlite3.Connection:
     return conn
 
 
-def save_session(
-    query: str, plan: str, subtasks: list[dict], report: str
-) -> int:
-    """Persist a completed research session and return its ID."""
+def save_session(query: str, subtasks: list[dict], report: str) -> int:
     conn = _get_connection()
     cur = conn.execute(
-        """
-        INSERT INTO research_sessions (query, plan, subtasks, report, created_at)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (
-            query,
-            plan,
-            json.dumps(subtasks, ensure_ascii=False),
-            report,
-            datetime.now(timezone.utc).isoformat(),
-        ),
+        "INSERT INTO research_sessions (query, subtasks, report, created_at) VALUES (?, ?, ?, ?)",
+        (query, json.dumps(subtasks, ensure_ascii=False), report, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
     session_id = cur.lastrowid
@@ -51,15 +38,9 @@ def save_session(
 
 
 def recall_relevant(query: str, limit: int = 3) -> list[dict]:
-    """Return the most recent sessions whose query overlaps with the new one.
-
-    Uses a simple keyword-overlap heuristic: each past query is scored by the
-    number of non-trivial words it shares with the incoming query.  This avoids
-    any extra dependency (e.g. an embedding model) while still being useful.
-    """
     conn = _get_connection()
     rows = conn.execute(
-        "SELECT id, query, plan, report, created_at FROM research_sessions "
+        "SELECT id, query, subtasks, report, created_at FROM research_sessions "
         "ORDER BY created_at DESC LIMIT 50"
     ).fetchall()
     conn.close()
@@ -74,58 +55,23 @@ def recall_relevant(query: str, limit: int = 3) -> list[dict]:
         "does", "did", "be", "been", "being", "have", "has", "had", "not",
         "but", "if", "about", "which", "their", "there", "can", "will",
     }
-    query_words = {
-        w.lower() for w in query.split() if len(w) > 2
-    } - stop_words
+    query_words = {w.lower() for w in query.split() if len(w) > 2} - stop_words
 
     scored: list[tuple[float, dict]] = []
     for row in rows:
-        past_words = {
-            w.lower() for w in row["query"].split() if len(w) > 2
-        } - stop_words
+        past_words = {w.lower() for w in row["query"].split() if len(w) > 2} - stop_words
         if not query_words or not past_words:
             continue
         overlap = len(query_words & past_words)
         if overlap > 0:
             score = overlap / len(query_words | past_words)
-            scored.append(
-                (
-                    score,
-                    {
-                        "id": row["id"],
-                        "query": row["query"],
-                        "plan": row["plan"],
-                        "report": row["report"],
-                        "created_at": row["created_at"],
-                    },
-                )
-            )
+            scored.append((score, {
+                "id": row["id"],
+                "query": row["query"],
+                "plan": row["subtasks"],
+                "report": row["report"],
+                "created_at": row["created_at"],
+            }))
 
     scored.sort(key=lambda x: x[0], reverse=True)
     return [item for _, item in scored[:limit]]
-
-
-def list_sessions(limit: int = 20) -> list[dict]:
-    """Return recent sessions (id, query, created_at) for display."""
-    conn = _get_connection()
-    rows = conn.execute(
-        "SELECT id, query, created_at FROM research_sessions "
-        "ORDER BY created_at DESC LIMIT ?",
-        (limit,),
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-
-def get_session(session_id: int) -> dict | None:
-    """Retrieve a full session by ID."""
-    conn = _get_connection()
-    row = conn.execute(
-        "SELECT * FROM research_sessions WHERE id = ?", (session_id,)
-    ).fetchone()
-    conn.close()
-    if row is None:
-        return None
-    result = dict(row)
-    result["subtasks"] = json.loads(result["subtasks"])
-    return result

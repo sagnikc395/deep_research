@@ -1,10 +1,15 @@
 [app]
-name                 = "deep-research"
-model_id             = "moonshotai/Kimi-K2-Thinking"
-model_provider       = "auto"
-task_planner_model_id    = "deepseek-ai/DeepSeek-V3.2-Exp"
-task_planner_provider    = "together"
-coordinator_model_id     = "MiniMaxAI/MiniMax-M1-80k"
-coordinator_provider     = "novita"
-subagent_model_id        = "MiniMaxAI/MiniMax-M1-80k"
-subagent_provider        = "novita"
+name = "deep-research"
+
+# Used for planning (subtask generation) and synthesis
+planner_model_id   = "deepseek-ai/DeepSeek-V3.2-Exp"
+planner_provider   = "together"
+
+# Used for research sub-agents (web search + page visits)
+agent_model_id     = "MiniMaxAI/MiniMax-M1-80k"
+agent_provider     = "novita"
+
+[rlm]
+max_iterations     = 15
+max_depth          = 2
+planning_max_depth = 2

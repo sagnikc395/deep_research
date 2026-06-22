@@ -1,79 +1,48 @@
-"""Stage 3 — Single-subtask researcher.
-
-Spawns an Agno Agent with Firecrawl MCP tools to research one subtask.
-
-MCP requires an async context (websocket / SSE transport). To stay
-compatible with sync callers (including Textual thread workers that
-may already have a running event loop), each subtask is executed in a
-fresh OS thread via ThreadPoolExecutor so that asyncio.run() always
-gets a clean loop.
-"""
 from __future__ import annotations
 
-import asyncio
-import concurrent.futures
-from typing import Optional
+from smolagents import DuckDuckGoSearchTool, VisitWebpageTool
 
-from agno.agent import Agent
-from agno.agent._run import RunOutput
-from agno.tools.mcp import MCPTools
-
-from .config import MCP_URL, subagent_model_id, subagent_provider
+from .config import agent_model_id, agent_provider, rlm_max_iterations, rlm_max_depth
 from .models import hf_model
 from .prompts import SUBAGENT_PROMPT_TEMPLATE
-from .telemetry import RESEARCHER_TOOL_CALL_LIMIT, PipelineMetrics, check_tool_loop
+from .rlm import RLM
+
+_search = DuckDuckGoSearchTool()
+_visit = VisitWebpageTool()
 
 
-async def _run_async(prompt: str) -> RunOutput:
-    """Run the research agent inside an async MCP context.
-
-    Returns the full RunOutput so callers can inspect metrics and tool
-    executions for token-waste and loop detection.
-    """
-    async with MCPTools(url=MCP_URL, transport="streamable-http") as mcp:
-        agent = Agent(
-            model=hf_model(subagent_model_id, subagent_provider),
-            tools=[mcp],
-            markdown=True,
-            # Hard cap on tool calls per run to prevent infinite tool loops.
-            tool_call_limit=RESEARCHER_TOOL_CALL_LIMIT,
-        )
-        return await agent.arun(prompt)
+def web_search(query: str) -> str:
+    """Search the web with DuckDuckGo. Returns a results summary."""
+    return _search(query)
 
 
-def research_subtask(
-    query: str,
-    plan: str,
-    subtask: dict,
-    log=print,
-    metrics: Optional[PipelineMetrics] = None,
-) -> str:
-    """Research *subtask* and return a markdown report.
+def visit_page(url: str) -> str:
+    """Fetch a web page and return its content as markdown."""
+    return _visit(url)
 
-    Runs asynchronous MCP operations in an isolated thread so the
-    caller can be either sync or inside an existing event loop.
-    """
+
+def research_subtask(query: str, subtask: dict, log=print) -> str:
     sid = subtask["id"]
-    log(f"Researcher starting [{sid}] {subtask['title']}...")
+    log(f"Researcher [{sid}] starting: {subtask['title']}...")
 
-    prompt = SUBAGENT_PROMPT_TEMPLATE.format(
+    task = SUBAGENT_PROMPT_TEMPLATE.format(
         user_query=query,
-        research_plan=plan,
         subtask_id=sid,
         subtask_title=subtask["title"],
         subtask_description=subtask["description"],
     )
 
-    # ThreadPoolExecutor gives us a thread with no running event loop,
-    # so asyncio.run() always works regardless of the caller context.
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(asyncio.run, _run_async(prompt))
-        response: RunOutput = future.result()
-
-    # ── Post-run checks ───────────────────────────────────────────────────
-    check_tool_loop(response.tools, label=f"researcher[{sid}]", log=log)
-    if metrics is not None:
-        metrics.record(f"researcher[{sid}]", response.metrics, log)
+    rlm = RLM(
+        model=hf_model(agent_model_id, agent_provider),
+        max_iterations=rlm_max_iterations,
+        max_depth=rlm_max_depth,
+        log=log,
+    )
+    result = rlm.run(
+        context=subtask["description"],
+        task=task,
+        extra_tools={"web_search": web_search, "visit_page": visit_page},
+    )
 
     log(f"Researcher [{sid}] done.")
-    return response.content
+    return result

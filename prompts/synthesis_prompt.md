@@ -3,9 +3,6 @@ You are the final editor of a multi-agent research team.
 The user asked:
 {user_query}
 
-The research plan was:
-{research_plan}
-
 Your research team has produced the following subtask reports:
 
 {sub_reports}
