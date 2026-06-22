@@ -11,6 +11,8 @@ dependencies = [
     "pydantic>=2.12.5",
     "python-dotenv>=1.2.2",
     "textual>=8.1.1",
+    "click>=8.1.0",
+    "ddgs>=9.14.4",
 ]
 
 [tool.setuptools.packages.find]
