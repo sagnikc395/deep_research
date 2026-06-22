@@ -180,7 +180,6 @@ This lets a single researcher process inputs far exceeding the context window by
 - [x] Hierarchical synthesis
 - [x] Recursive planning
 - [x] CLI interface
-- [ ] [Obsidian integration](https://github.com/sagnikc395/obscure) for autonomous knowledge-gap filling
 - [ ] Cost tracking per run
 - [ ] Token-usage telemetry
 
