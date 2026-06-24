@@ -1,7 +1,7 @@
 [project]
 name = "deep-research"
 version = "0.2.0"
-description = "a multi-agent deep research framework using smolagents for web research."
+description = "a multi-agent deep research agent using smolagents for web research."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -10,7 +10,6 @@ dependencies = [
     "markdownify>=0.14.1",
     "pydantic>=2.12.5",
     "python-dotenv>=1.2.2",
-    "textual>=8.1.1",
     "click>=8.1.0",
     "ddgs>=9.14.4",
 ]
