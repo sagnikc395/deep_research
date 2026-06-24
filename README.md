@@ -1,4 +1,4 @@
-# deep-research
+# deep_research
 
 A multi-agent deep research system built on open-source models. Give it a question; it plans the investigation, fans out parallel web-research agents, and produces a single polished Markdown report.
 
