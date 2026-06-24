@@ -172,16 +172,6 @@ This lets a single researcher process inputs far exceeding the context window by
 - **Coordinator as plain Python.** A Python loop is simpler and more deterministic than an LLM-as-coordinator. The LLM is only used where it adds real value.
 - **Watch thread counts.** Each researcher gets its own thread. `max_workers=len(subtasks)` works for typical splits (4-8 subtasks) but should be capped for larger lists.
 
-## Roadmap
-
-- [x] Memory support
-- [x] Parallel researchers
-- [x] RLM engine
-- [x] Hierarchical synthesis
-- [x] Recursive planning
-- [x] CLI interface
-- [ ] Cost tracking per run
-- [ ] Token-usage telemetry
 
 ## References
 

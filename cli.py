@@ -3,7 +3,7 @@ import sys
 import click
 from dotenv import load_dotenv
 
-from research.coordinator import run_deep_research
+from deep_research.coordinator import run_deep_research
 
 load_dotenv()
 
